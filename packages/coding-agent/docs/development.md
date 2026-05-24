@@ -52,6 +52,30 @@ Never use `__dirname` directly for package assets.
 - Rendered TUI lines with ANSI codes
 - Last messages sent to the LLM
 
+## Interaction Trace Log
+
+Interactive mode can append the full `AgentSessionEvent` stream (including streaming deltas and tool execution lifecycle events) to a JSONL file:
+
+```bash
+PI_INTERACTION_LOG=1 ./pi-test.sh
+PI_INTERACTION_LOG=/tmp/pi-traces ./pi-test.sh
+PI_INTERACTION_LOG=/tmp/trace.jsonl ./pi-test.sh
+./pi-test.sh --interaction-log
+./pi-test.sh --interaction-log /tmp/trace.jsonl
+```
+
+Default directory: `~/.pi/agent/interaction-logs/interaction-<timestamp>-<pid>.jsonl`
+
+Streaming delta events (`text_delta`, `thinking_delta`, `toolcall_delta`, `tool_execution_update`) are omitted; lifecycle events such as `message_start`, `message_end`, and `tool_execution_start` are kept.
+
+Each line is a JSON object with `kind` of `header`, `event`, or `footer`. Filter events with:
+
+```bash
+jq -r 'select(.kind=="event") | .event.type' trace.jsonl
+```
+
+Logs may contain user input, tool arguments, and model output. Do not commit them to git.
+
 ## Testing
 
 ```bash

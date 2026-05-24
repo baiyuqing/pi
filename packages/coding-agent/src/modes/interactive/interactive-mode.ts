@@ -73,6 +73,7 @@ import type {
 } from "../../core/extensions/index.ts";
 import { FooterDataProvider, type ReadonlyFooterDataProvider } from "../../core/footer-data-provider.ts";
 import { configureHttpDispatcher, formatHttpIdleTimeoutMs } from "../../core/http-dispatcher.ts";
+import { createInteractionTraceWriter, type InteractionTraceWriter } from "../../core/interaction-trace.ts";
 import { type AppKeybinding, KeybindingsManager } from "../../core/keybindings.ts";
 import { createCompactionSummaryMessage } from "../../core/messages.ts";
 import { defaultModelPerProvider, findExactModelReferenceMatch, resolveModelScope } from "../../core/model-resolver.ts";
@@ -255,6 +256,8 @@ export interface InteractiveModeOptions {
 	initialMessages?: string[];
 	/** Force verbose startup (overrides quietStartup setting) */
 	verbose?: boolean;
+	/** Resolved path for agent event trace JSONL; empty disables tracing */
+	interactionLog?: string;
 }
 
 export class InteractiveMode {
@@ -314,6 +317,9 @@ export class InteractiveMode {
 
 	// Agent subscription unsubscribe function
 	private unsubscribe?: () => void;
+	private interactionTraceUnsubscribe?: () => void;
+	private interactionTraceWriter?: InteractionTraceWriter;
+	private interactionTraceHintShown = false;
 	private signalCleanupHandlers: Array<() => void> = [];
 
 	// Track if editor is in bash mode (text starts with !)
@@ -383,6 +389,7 @@ export class InteractiveMode {
 	constructor(runtimeHost: AgentSessionRuntime, options: InteractiveModeOptions = {}) {
 		this.runtimeHost = runtimeHost;
 		this.options = options;
+		this.interactionTraceWriter = createInteractionTraceWriter(options.interactionLog ?? "");
 		this.runtimeHost.setBeforeSessionInvalidate(() => {
 			this.resetExtensionUI();
 		});
@@ -1611,9 +1618,13 @@ export class InteractiveMode {
 	private async rebindCurrentSession(): Promise<void> {
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
+		this.interactionTraceUnsubscribe?.();
+		this.interactionTraceUnsubscribe = undefined;
 		this.applyRuntimeSettings();
 		await this.bindCurrentSessionExtensions();
 		this.subscribeToAgent();
+		this.writeInteractionTraceHeader();
+		this.showInteractionTraceHint();
 		await this.updateAvailableProviderCount();
 		this.updateEditorBorderColor();
 		this.updateTerminalTitle();
@@ -2672,6 +2683,34 @@ export class InteractiveMode {
 		this.unsubscribe = this.session.subscribe(async (event) => {
 			await this.handleEvent(event);
 		});
+		if (this.interactionTraceWriter) {
+			this.interactionTraceUnsubscribe = this.session.subscribe((event) => {
+				this.interactionTraceWriter?.writeEvent(event);
+			});
+		}
+	}
+
+	private writeInteractionTraceHeader(): void {
+		if (!this.interactionTraceWriter) return;
+		this.interactionTraceWriter.writeHeader({
+			cwd: this.sessionManager.getCwd(),
+			sessionFile: this.sessionManager.getSessionFile(),
+			sessionId: this.sessionManager.getSessionId(),
+		});
+	}
+
+	private showInteractionTraceHint(): void {
+		if (!this.interactionTraceWriter || this.interactionTraceHintShown) return;
+		this.interactionTraceHintShown = true;
+		this.chatContainer.addChild(new Spacer(1));
+		this.chatContainer.addChild(
+			new Text(
+				`${theme.fg("accent", "Interaction trace enabled")}\n${theme.fg("muted", this.interactionTraceWriter.filePath)}`,
+				1,
+				1,
+			),
+		);
+		this.ui.requestRender();
 	}
 
 	private async handleEvent(event: AgentSessionEvent): Promise<void> {
@@ -5614,6 +5653,10 @@ export class InteractiveMode {
 		if (this.unsubscribe) {
 			this.unsubscribe();
 		}
+		this.interactionTraceUnsubscribe?.();
+		this.interactionTraceUnsubscribe = undefined;
+		this.interactionTraceWriter?.close();
+		this.interactionTraceWriter = undefined;
 		if (this.isInitialized) {
 			this.ui.stop();
 			this.isInitialized = false;

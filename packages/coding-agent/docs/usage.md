@@ -277,6 +277,7 @@ pi --exclude-tools ask_question
 | `PI_SKIP_VERSION_CHECK` | Skip the Pi version update check at startup. This prevents the `pi.dev` latest-version request |
 | `PI_TELEMETRY` | Override install/update telemetry: `1`/`true`/`yes` or `0`/`false`/`no`. This does not disable update checks |
 | `PI_CACHE_RETENTION` | Set to `long` for extended prompt cache where supported |
+| `PI_INTERACTION_LOG` | Log agent events to JSONL in interactive mode (`1`, directory, or file path). Overridden by `--interaction-log` |
 | `VISUAL`, `EDITOR` | External editor for Ctrl+G |
 
 ## Design Principles

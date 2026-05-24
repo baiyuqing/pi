@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added interactive-mode agent event tracing via `PI_INTERACTION_LOG` or `--interaction-log`, writing JSONL logs under `~/.pi/agent/interaction-logs/` by default. Delta events are omitted from the trace.
+
 ## [0.78.0] - 2026-05-29
 
 ### New Features
