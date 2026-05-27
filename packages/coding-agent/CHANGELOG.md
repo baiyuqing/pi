@@ -5,6 +5,7 @@
 ### Added
 
 - Added interactive-mode agent event tracing via `PI_INTERACTION_LOG` or `--interaction-log`, writing JSONL logs under `~/.pi/agent/interaction-logs/` by default. Delta events are omitted from the trace.
+- Added `excludeFromContext` flag to the `bash` RPC command for parity with the internal `executeBash` API ([#5039](https://github.com/earendil-works/pi/issues/5039)).
 
 ## [0.78.0] - 2026-05-29
 
