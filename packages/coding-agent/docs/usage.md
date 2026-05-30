@@ -40,7 +40,9 @@ Type `/` in the editor to open command completion. Extensions can register custo
 | `/scoped-models` | Enable/disable models for Ctrl+P cycling |
 | `/settings` | Thinking level, theme, message delivery, transport |
 | `/resume` | Pick from previous sessions |
-| `/new` | Start a new session |
+| `/clear [name]` | Clear terminal and start a fresh session; optional name labels the previous session in `/resume` |
+| `/reset` | Alias for `/clear` |
+| `/new` | Start a new session (keeps terminal scrollback) |
 | `/name <name>` | Set session display name |
 | `/session` | Show session file, ID, messages, tokens, and cost |
 | `/tree` | Jump to any point in the session and continue from there |

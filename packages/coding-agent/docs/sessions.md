@@ -24,7 +24,9 @@ For the JSONL file format and SessionManager API, see [Session Format](session-f
 | Command | Description |
 |---------|-------------|
 | `/resume` | Browse and select previous sessions |
-| `/new` | Start a new session |
+| `/clear [name]` | Clear terminal and start a fresh session; optional name labels the previous session |
+| `/reset` | Alias for `/clear` |
+| `/new` | Start a new session (keeps terminal scrollback) |
 | `/name <name>` | Set the current session display name |
 | `/session` | Show session info |
 | `/tree` | Navigate the current session tree |

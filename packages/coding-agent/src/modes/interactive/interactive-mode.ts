@@ -2455,7 +2455,9 @@ export class InteractiveMode {
 		this.defaultEditor.onAction("app.editor.external", () => this.openExternalEditor());
 		this.defaultEditor.onAction("app.message.followUp", () => this.handleFollowUp());
 		this.defaultEditor.onAction("app.message.dequeue", () => this.handleDequeue());
-		this.defaultEditor.onAction("app.session.new", () => this.handleClearCommand());
+		this.defaultEditor.onAction("app.session.new", () => {
+			void this.handleNewSessionCommand({ clearTerminal: false, successMessage: "New session started" });
+		});
 		this.defaultEditor.onAction("app.session.tree", () => this.showTreeSelector());
 		this.defaultEditor.onAction("app.session.fork", () => this.showUserMessageSelector());
 		this.defaultEditor.onAction("app.session.resume", () => this.showSessionSelector());
@@ -2583,9 +2585,19 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
+			if (text === "/clear" || text === "/reset" || text.startsWith("/clear ")) {
+				const previousSessionName = text.startsWith("/clear ") ? text.slice(7).trim() : undefined;
+				this.editor.setText("");
+				await this.handleNewSessionCommand({
+					clearTerminal: true,
+					previousSessionName: previousSessionName || undefined,
+					successMessage: "Context cleared",
+				});
+				return;
+			}
 			if (text === "/new") {
 				this.editor.setText("");
-				await this.handleClearCommand();
+				await this.handleNewSessionCommand({ clearTerminal: false, successMessage: "New session started" });
 				return;
 			}
 			if (text === "/compact" || text.startsWith("/compact ")) {
@@ -5452,20 +5464,36 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
-	private async handleClearCommand(): Promise<void> {
+	private async handleNewSessionCommand(options: {
+		clearTerminal: boolean;
+		previousSessionName?: string;
+		successMessage: string;
+	}): Promise<void> {
+		if (this.session.isStreaming) {
+			this.showWarning("Cannot start a new session while the agent is working (press Escape to abort)");
+			return;
+		}
+
 		if (this.loadingAnimation) {
 			this.loadingAnimation.stop();
 			this.loadingAnimation = undefined;
 		}
 		this.statusContainer.clear();
 		try {
+			if (options.previousSessionName) {
+				this.session.setSessionName(options.previousSessionName);
+			}
 			const result = await this.runtimeHost.newSession();
 			if (result.cancelled) {
 				return;
 			}
+			if (options.clearTerminal) {
+				this.ui.terminal.clearScreen();
+				this.ui.invalidate();
+			}
 			this.renderCurrentSessionState();
 			this.chatContainer.addChild(new Spacer(1));
-			this.chatContainer.addChild(new Text(`${theme.fg("accent", "✓ New session started")}`, 1, 1));
+			this.chatContainer.addChild(new Text(`${theme.fg("accent", `✓ ${options.successMessage}`)}`, 1, 1));
 			this.ui.requestRender();
 		} catch (error: unknown) {
 			await this.handleFatalRuntimeError("Failed to create session", error);
