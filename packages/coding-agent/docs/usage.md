@@ -48,6 +48,7 @@ Type `/` in the editor to open command completion. Extensions can register custo
 | `/fork` | Create a new session from a previous user message |
 | `/clone` | Duplicate the current active branch into a new session |
 | `/compact [prompt]` | Manually compact context, optionally with custom instructions |
+| `/role [name]` | List roles or switch to a saved role profile with role-specific memory |
 | `/copy` | Copy last assistant message to clipboard |
 | `/export [file]` | Export session to HTML or JSONL |
 | `/import <file>` | Import and resume a session from a JSONL file |
@@ -56,6 +57,12 @@ Type `/` in the editor to open command completion. Extensions can register custo
 | `/hotkeys` | Show all keyboard shortcuts |
 | `/changelog` | Display version history |
 | `/quit` | Quit pi |
+
+### Roles and Memory
+
+Use `/role create <name> <description>` to create a role profile, `/role <name>` to switch roles, `/role memory` to inspect loaded role memory, `/role remember [--global|--project] <memory>` to append an explicit memory note, and `/role save-memory` to save role-specific learnings from the current conversation. Role switching keeps the current session history and changes only the system prompt context and memory.
+
+Global role files are stored under `~/.pi/agent/roles/<role>/`. Trusted projects can also use project role memory under `.pi/roles/<role>/`; untrusted projects do not read or write project role memory.
 
 ## Message Queue
 

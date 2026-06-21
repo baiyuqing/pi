@@ -24,6 +24,7 @@ import {
 } from "./core/agent-session-services.ts";
 import { formatNoModelsAvailableMessage } from "./core/auth-guidance.ts";
 import { AuthStorage } from "./core/auth-storage.ts";
+import { getBuiltinExtensionFactories } from "./core/builtin-extensions/index.ts";
 import { exportFromFile } from "./core/export-html/index.ts";
 import type { ExtensionFactory } from "./core/extensions/types.ts";
 import { applyHttpProxySettings, configureHttpDispatcher } from "./core/http-dispatcher.ts";
@@ -626,6 +627,8 @@ export async function main(args: string[], options?: MainOptions) {
 				parsed.projectTrustOverride ??
 				(!hasTrustRequiringResources || trustStore.get(cwd) === true));
 		const runtimeSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted });
+		const builtinExtensionFactories = parsed.noExtensions ? [] : getBuiltinExtensionFactories();
+		const extensionFactories = [...(options?.extensionFactories ?? []), ...builtinExtensionFactories];
 		const services = await createAgentSessionServices({
 			cwd,
 			agentDir,
@@ -668,7 +671,7 @@ export async function main(args: string[], options?: MainOptions) {
 				noContextFiles: parsed.noContextFiles,
 				systemPrompt: parsed.systemPrompt,
 				appendSystemPrompt: parsed.appendSystemPrompt,
-				extensionFactories: options?.extensionFactories,
+				extensionFactories,
 			},
 		});
 		const { settingsManager, modelRegistry, resourceLoader } = services;
