@@ -19,6 +19,7 @@ interface RoleMemoryState {
 const ROLE_SUBCOMMAND_COMPLETIONS: AutocompleteItem[] = [
 	{ value: "create ", label: "create", description: "Create a role profile" },
 	{ value: "memory", label: "memory", description: "Show current role memory" },
+	{ value: "select", label: "select", description: "Select a role from available roles" },
 	{ value: "remember ", label: "remember", description: "Extract memory for the active role" },
 	{ value: "save-memory", label: "save-memory", description: "Extract and save memory for the active role" },
 ];
@@ -167,6 +168,17 @@ async function showRoleMemory(state: RoleMemoryState, ctx: ExtensionCommandConte
 	ctx.ui.notify(lines.join("\n"), "info");
 }
 
+async function notifyAvailableRolesOnStart(state: RoleMemoryState, ctx: ExtensionContext): Promise<void> {
+	if (ctx.mode !== "tui" || state.activeRole || !state.listAvailableRoles) {
+		return;
+	}
+	const roles = await state.listAvailableRoles();
+	if (roles.length === 0) {
+		return;
+	}
+	ctx.ui.notify(`Roles available: ${roles.join(", ")}. Use /role select or /role <name> to switch.`, "info");
+}
+
 async function switchRole(
 	pi: ExtensionAPI,
 	state: RoleMemoryState,
@@ -199,6 +211,24 @@ async function switchRole(
 	persistState(pi, state);
 	ctx.ui.setStatus("role-memory", `role: ${role}`);
 	ctx.ui.notify(`Role switched to ${role}`, "info");
+}
+
+async function selectRole(pi: ExtensionAPI, state: RoleMemoryState, ctx: ExtensionCommandContext): Promise<void> {
+	if (!ctx.hasUI) {
+		ctx.ui.notify("Role selection requires interactive UI", "warning");
+		return;
+	}
+	const roles = await listRoles({ agentDir: getAgentDir(), cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted() });
+	if (roles.length === 0) {
+		ctx.ui.notify("No roles available", "warning");
+		return;
+	}
+	const role = await ctx.ui.select("Select role", roles);
+	if (!role) {
+		ctx.ui.notify("Role selection cancelled", "info");
+		return;
+	}
+	await switchRole(pi, state, role, ctx);
 }
 
 function parseRememberArgs(args: string): { scope: "global" | "project"; text: string } {
@@ -307,13 +337,14 @@ export default function roleMemoryExtension(pi: ExtensionAPI): void {
 		listAvailableRoles: undefined,
 	};
 
-	pi.on("session_start", (_event, ctx) => {
+	pi.on("session_start", async (_event, ctx) => {
 		const restored = restoreRoleState(ctx.sessionManager.getBranch());
 		state.activeRole = restored.activeRole;
 		state.lastExtractionEntryId = restored.lastExtractionLeafId;
 		state.listAvailableRoles = () =>
 			listRoles({ agentDir: getAgentDir(), cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted() });
 		ctx.ui.setStatus("role-memory", state.activeRole ? `role: ${state.activeRole}` : undefined);
+		await notifyAvailableRolesOnStart(state, ctx);
 	});
 
 	pi.on("session_shutdown", async (event, ctx) => {
@@ -338,6 +369,10 @@ export default function roleMemoryExtension(pi: ExtensionAPI): void {
 			}
 			if (trimmed === "memory") {
 				await showRoleMemory(state, ctx);
+				return;
+			}
+			if (trimmed === "select") {
+				await selectRole(pi, state, ctx);
 				return;
 			}
 			if (trimmed.startsWith("remember ")) {

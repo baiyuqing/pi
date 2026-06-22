@@ -43,9 +43,10 @@ async function createRoleHarness(options: HarnessOptions = {}): Promise<{ harnes
 function createRoleUiContext(options: {
 	editor?: (title: string, prefill: string | undefined) => string | undefined;
 	notify?: (message: string, type: "info" | "warning" | "error" | undefined) => void;
+	select?: (title: string, options: string[]) => string | undefined;
 }): ExtensionUIContext {
 	return {
-		select: async () => undefined,
+		select: async (title, selectOptions) => options.select?.(title, selectOptions),
 		confirm: async () => false,
 		input: async () => undefined,
 		notify: options.notify ?? (() => {}),
@@ -172,6 +173,78 @@ describe("role memory extension", () => {
 			const values = (allCompletions ?? []).map((item) => item.value);
 			expect(values).toContain("ops");
 			expect(values).not.toContain("frontend");
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("shows available roles on TUI session start when no role is active", async () => {
+		const { harness, cleanup } = await createRoleHarness();
+		const notifications: Array<{ message: string; type: "info" | "warning" | "error" | undefined }> = [];
+		try {
+			await writeRoleFile(join(harness.tempDir, "agent"), "ops", "profile.md", "Global ops profile");
+			await writeRoleFile(join(harness.tempDir, ".pi"), "frontend", "profile.md", "Project frontend profile");
+
+			await harness.session.bindExtensions({
+				mode: "tui",
+				uiContext: createRoleUiContext({
+					notify: (message, type) => notifications.push({ message, type }),
+				}),
+			});
+
+			expect(notifications).toContainEqual({
+				message: "Roles available: frontend, ops. Use /role select or /role <name> to switch.",
+				type: "info",
+			});
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("does not show available roles on session start when a role is active", async () => {
+		const { harness, cleanup } = await createRoleHarness();
+		const notifications: string[] = [];
+		try {
+			await writeRoleFile(join(harness.tempDir, "agent"), "ops", "profile.md", "Global ops profile");
+			harness.sessionManager.appendCustomEntry("role-memory", { kind: "state", activeRole: "ops" });
+
+			await harness.session.bindExtensions({
+				mode: "tui",
+				uiContext: createRoleUiContext({ notify: (message) => notifications.push(message) }),
+			});
+
+			expect(notifications).not.toContain("Roles available: ops. Use /role select or /role <name> to switch.");
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("selects a role with /role select", async () => {
+		const { harness, cleanup } = await createRoleHarness();
+		const selectCalls: Array<{ title: string; options: string[] }> = [];
+		try {
+			await writeRoleFile(join(harness.tempDir, "agent"), "ops", "profile.md", "Global ops profile");
+			await writeRoleFile(join(harness.tempDir, ".pi"), "frontend", "profile.md", "Project frontend profile");
+			await harness.session.bindExtensions({
+				mode: "tui",
+				uiContext: createRoleUiContext({
+					select: (title, options) => {
+						selectCalls.push({ title, options });
+						return "frontend";
+					},
+				}),
+			});
+
+			await harness.session.prompt("/role select");
+			expect(selectCalls).toEqual([{ title: "Select role", options: ["frontend", "ops"] }]);
+
+			harness.setResponses([
+				(context) => {
+					expect(context.systemPrompt ?? "").toContain("## Active Role: frontend");
+					return fauxAssistantMessage("ok");
+				},
+			]);
+			await harness.session.prompt("hello");
 		} finally {
 			cleanup();
 		}
