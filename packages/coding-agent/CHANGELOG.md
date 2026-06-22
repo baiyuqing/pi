@@ -65,6 +65,10 @@
 
 - Removed inherited selective-provider `@earendil-works/pi-ai/base` and `@earendil-works/pi-agent-core/base` entrypoints; use the root packages with explicit `Models` provider factories instead.
 
+### Fixed
+
+- Fixed `pi --resume` to load user package themes and resolve automatic light/dark theme settings.
+
 ## [0.79.10] - 2026-06-22
 
 ### New Features
