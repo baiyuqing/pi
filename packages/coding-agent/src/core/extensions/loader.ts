@@ -85,22 +85,38 @@ function getAliases(): Record<string, string> {
 	const typeboxValueEntry = require.resolve("typebox/value");
 
 	const packagesRoot = path.resolve(__dirname, "../../../../");
-	const resolveWorkspaceOrImport = (workspaceRelativePath: string, specifier: string): string => {
-		const workspacePath = path.join(packagesRoot, workspaceRelativePath);
-		if (fs.existsSync(workspacePath)) {
-			return workspacePath;
+	const resolveWorkspaceOrImport = (workspaceRelativePaths: string[], specifier: string): string => {
+		for (const workspaceRelativePath of workspaceRelativePaths) {
+			const workspacePath = path.join(packagesRoot, workspaceRelativePath);
+			if (fs.existsSync(workspacePath)) {
+				return workspacePath;
+			}
 		}
 		return fileURLToPath(import.meta.resolve(specifier));
 	};
 
-	const piCodingAgentEntry = packageIndex;
-	const piAgentCoreEntry = resolveWorkspaceOrImport("agent/dist/index.js", "@earendil-works/pi-agent-core");
-	const piTuiEntry = resolveWorkspaceOrImport("tui/dist/index.js", "@earendil-works/pi-tui");
+	const piCodingAgentEntry = fs.existsSync(packageIndex)
+		? packageIndex
+		: resolveWorkspaceOrImport(
+				["coding-agent/src/index.ts", "coding-agent/dist/index.js"],
+				"@earendil-works/pi-coding-agent",
+			);
+	const piAgentCoreEntry = resolveWorkspaceOrImport(
+		["agent/src/index.ts", "agent/dist/index.js"],
+		"@earendil-works/pi-agent-core",
+	);
+	const piTuiEntry = resolveWorkspaceOrImport(["tui/src/index.ts", "tui/dist/index.js"], "@earendil-works/pi-tui");
 	// Extensions resolve the pi-ai root to the compat entrypoint (a strict
 	// superset of the core entrypoint): existing extensions using the old
 	// global API keep working at runtime until compat is removed.
-	const piAiCompatEntry = resolveWorkspaceOrImport("ai/dist/compat.js", "@earendil-works/pi-ai/compat");
-	const piAiOauthEntry = resolveWorkspaceOrImport("ai/dist/oauth.js", "@earendil-works/pi-ai/oauth");
+	const piAiCompatEntry = resolveWorkspaceOrImport(
+		["ai/src/compat.ts", "ai/dist/compat.js"],
+		"@earendil-works/pi-ai/compat",
+	);
+	const piAiOauthEntry = resolveWorkspaceOrImport(
+		["ai/src/oauth.ts", "ai/dist/oauth.js"],
+		"@earendil-works/pi-ai/oauth",
+	);
 
 	_aliases = {
 		"@earendil-works/pi-coding-agent": piCodingAgentEntry,
