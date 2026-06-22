@@ -75,21 +75,25 @@ export async function writeMemoryAtomic(filePath: string, content: string): Prom
 	}
 }
 
-export async function appendMemoryBullet(filePath: string, text: string): Promise<void> {
+export async function appendMemoryBlock(filePath: string, text: string): Promise<void> {
 	const dir = dirname(filePath);
 	await mkdir(dir, { recursive: true });
 	const release = await lockfile.lock(dir, { realpath: false });
 	const tempPath = join(dir, `.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 	try {
 		const existing = (await readOptionalText(filePath)) ?? "";
-		const bullet = `- ${text.trim()}\n`;
-		const content = existing.trim().length > 0 ? `${existing.trimEnd()}\n\n${bullet}` : bullet;
+		const block = `${text.trim()}\n`;
+		const content = existing.trim().length > 0 ? `${existing.trimEnd()}\n\n${block}` : block;
 		await writeFile(tempPath, content, "utf8");
 		await rename(tempPath, filePath);
 	} finally {
 		await rm(tempPath, { force: true });
 		await release();
 	}
+}
+
+export async function appendMemoryBullet(filePath: string, text: string): Promise<void> {
+	await appendMemoryBlock(filePath, `- ${text.trim()}`);
 }
 
 export async function createGlobalRoleProfile(paths: RolePaths, description: string): Promise<void> {

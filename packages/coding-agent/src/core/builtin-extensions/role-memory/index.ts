@@ -1,17 +1,39 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import { getAgentDir } from "../../../config.ts";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../extensions/index.ts";
-import { extractAndWriteRoleMemory } from "./memory.ts";
+import { extractAndWriteRoleMemory, extractRememberRoleMemory } from "./memory.ts";
 import { assertRoleName, resolveRolePaths } from "./paths.ts";
 import { formatRolePromptSection } from "./prompt.ts";
 import { restoreRoleState } from "./session-state.ts";
-import { appendMemoryBullet, createGlobalRoleProfile, listRoles, loadRoleBundle } from "./storage.ts";
+import { appendMemoryBlock, createGlobalRoleProfile, listRoles, loadRoleBundle } from "./storage.ts";
 import { ROLE_MEMORY_CUSTOM_TYPE } from "./types.ts";
 
 interface RoleMemoryState {
 	activeRole: string | undefined;
 	lastExtractionEntryId: string | null | undefined;
+	listAvailableRoles: (() => Promise<string[]>) | undefined;
+}
+
+const ROLE_SUBCOMMAND_COMPLETIONS: AutocompleteItem[] = [
+	{ value: "create ", label: "create", description: "Create a role profile" },
+	{ value: "memory", label: "memory", description: "Show current role memory" },
+	{ value: "remember ", label: "remember", description: "Extract memory for the active role" },
+	{ value: "save-memory", label: "save-memory", description: "Extract and save memory for the active role" },
+];
+
+const ROLE_REMEMBER_FLAG_COMPLETIONS: AutocompleteItem[] = [
+	{ value: "remember --global ", label: "--global", description: "Remember global role memory" },
+	{ value: "remember --project ", label: "--project", description: "Remember project role memory" },
+];
+
+function filterCompletionItems(items: AutocompleteItem[], query: string): AutocompleteItem[] {
+	const normalized = query.trimStart().toLowerCase();
+	if (!normalized) {
+		return items;
+	}
+	return items.filter((item) => item.value.toLowerCase().startsWith(normalized));
 }
 
 function persistState(pi: ExtensionAPI, state: RoleMemoryState): void {
@@ -188,7 +210,7 @@ function parseRememberArgs(args: string): { scope: "global" | "project"; text: s
 		return { scope: "project", text: trimmed.slice("--project ".length).trim() };
 	}
 	if (trimmed.startsWith("--")) {
-		throw new Error("Usage: /role remember [--global|--project] <memory>");
+		throw new Error("Usage: /role remember [--global|--project] <instruction>");
 	}
 	return { scope: "global", text: trimmed };
 }
@@ -200,7 +222,7 @@ async function rememberRoleMemory(state: RoleMemoryState, args: string, ctx: Ext
 	}
 	const { scope, text } = parseRememberArgs(args);
 	if (!text) {
-		throw new Error("Usage: /role remember [--global|--project] <memory>");
+		throw new Error("Usage: /role remember [--global|--project] <instruction>");
 	}
 	const paths = resolveRolePaths({
 		agentDir: getAgentDir(),
@@ -208,17 +230,42 @@ async function rememberRoleMemory(state: RoleMemoryState, args: string, ctx: Ext
 		role: state.activeRole,
 		projectTrusted: ctx.isProjectTrusted(),
 	});
-	if (scope === "project") {
-		if (!paths.project) {
-			ctx.ui.notify("Project role memory is unavailable because this project is not trusted", "warning");
-			return;
-		}
-		await appendMemoryBullet(paths.project.memory, text);
-		ctx.ui.notify(`Remembered project memory for role ${state.activeRole}`, "info");
+	if (scope === "project" && !paths.project) {
+		ctx.ui.notify("Project role memory is unavailable because this project is not trusted", "warning");
 		return;
 	}
-	await appendMemoryBullet(paths.global.memory, text);
-	ctx.ui.notify(`Remembered global memory for role ${state.activeRole}`, "info");
+	if (!ctx.hasUI) {
+		ctx.ui.notify("Role memory confirmation requires interactive UI", "warning");
+		return;
+	}
+	const bundle = await loadRoleBundle(paths);
+	const candidate = await extractRememberRoleMemory({
+		model: ctx.model as Model<Api> | undefined,
+		modelRegistry: ctx.modelRegistry,
+		paths,
+		bundle,
+		messages: getConversationMessages(ctx),
+		scope,
+		instruction: text,
+		signal: ctx.signal,
+	});
+	if (!candidate) {
+		ctx.ui.notify("No role memory candidate was generated", "warning");
+		return;
+	}
+	const edited = await ctx.ui.editor(`Review ${scope} role memory for ${state.activeRole}`, candidate);
+	const finalMemory = edited?.trim();
+	if (!finalMemory) {
+		ctx.ui.notify("Role memory update cancelled", "info");
+		return;
+	}
+	const targetPath = scope === "project" ? paths.project?.memory : paths.global.memory;
+	if (!targetPath) {
+		ctx.ui.notify("Project role memory is unavailable because this project is not trusted", "warning");
+		return;
+	}
+	await appendMemoryBlock(targetPath, finalMemory);
+	ctx.ui.notify(`Remembered ${scope} memory for role ${state.activeRole}`, "info");
 }
 
 async function createRole(args: string, ctx: ExtensionCommandContext): Promise<void> {
@@ -237,16 +284,35 @@ async function createRole(args: string, ctx: ExtensionCommandContext): Promise<v
 	ctx.ui.notify(`Created role ${role}`, "info");
 }
 
+async function getRoleArgumentCompletions(
+	state: RoleMemoryState,
+	argumentPrefix: string,
+): Promise<AutocompleteItem[] | null> {
+	const query = argumentPrefix.trimStart();
+	if (query.toLowerCase().startsWith("remember ")) {
+		const flagItems = filterCompletionItems(ROLE_REMEMBER_FLAG_COMPLETIONS, query);
+		return flagItems.length > 0 ? flagItems : null;
+	}
+
+	const roles = state.listAvailableRoles ? await state.listAvailableRoles() : [];
+	const roleItems = roles.map((role) => ({ value: role, label: role, description: "Role" }));
+	const items = filterCompletionItems([...ROLE_SUBCOMMAND_COMPLETIONS, ...roleItems], query);
+	return items.length > 0 ? items : null;
+}
+
 export default function roleMemoryExtension(pi: ExtensionAPI): void {
 	const state: RoleMemoryState = {
 		activeRole: undefined,
 		lastExtractionEntryId: undefined,
+		listAvailableRoles: undefined,
 	};
 
 	pi.on("session_start", (_event, ctx) => {
 		const restored = restoreRoleState(ctx.sessionManager.getBranch());
 		state.activeRole = restored.activeRole;
 		state.lastExtractionEntryId = restored.lastExtractionLeafId;
+		state.listAvailableRoles = () =>
+			listRoles({ agentDir: getAgentDir(), cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted() });
 		ctx.ui.setStatus("role-memory", state.activeRole ? `role: ${state.activeRole}` : undefined);
 	});
 
@@ -259,6 +325,7 @@ export default function roleMemoryExtension(pi: ExtensionAPI): void {
 
 	pi.registerCommand("role", {
 		description: "Switch role and manage role memory",
+		getArgumentCompletions: (argumentPrefix) => getRoleArgumentCompletions(state, argumentPrefix),
 		handler: async (args, ctx) => {
 			const trimmed = args.trim();
 			if (!trimmed) {
@@ -278,7 +345,7 @@ export default function roleMemoryExtension(pi: ExtensionAPI): void {
 				return;
 			}
 			if (trimmed === "remember") {
-				throw new Error("Usage: /role remember [--global|--project] <memory>");
+				throw new Error("Usage: /role remember [--global|--project] <instruction>");
 			}
 			if (trimmed === "save-memory") {
 				await saveMemory(pi, state, ctx, true);

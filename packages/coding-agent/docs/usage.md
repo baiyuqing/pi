@@ -60,7 +60,7 @@ Type `/` in the editor to open command completion. Extensions can register custo
 
 ### Roles and Memory
 
-Use `/role create <name> <description>` to create a role profile, `/role <name>` to switch roles, `/role memory` to inspect loaded role memory, `/role remember [--global|--project] <memory>` to append an explicit memory note, and `/role save-memory` to save role-specific learnings from the current conversation. Role switching keeps the current session history and changes only the system prompt context and memory.
+Use `/role create <name> <description>` to create a role profile, `/role <name>` to switch roles, `/role memory` to inspect loaded role memory, `/role remember [--global|--project] <instruction>` to ask Pi to extract a candidate memory from the current conversation and confirm it in an editable dialog, and `/role save-memory` to save role-specific learnings from the current conversation. Role switching keeps the current session history and changes only the system prompt context and memory.
 
 Global role files are stored under `~/.pi/agent/roles/<role>/`. Trusted projects can also use project role memory under `.pi/roles/<role>/`; untrusted projects do not read or write project role memory.
 

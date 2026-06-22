@@ -5,7 +5,8 @@
 ### Added
 
 - Added an `externalEditor` settings.json override for Ctrl+G external editor commands, with default fallbacks to Notepad on Windows and `nano` elsewhere ([#6122](https://github.com/earendil-works/pi/issues/6122)).
-- Added bundled `/role` support for switching role-specific prompt context, explicit `/role remember` notes, and saving global/project role memory.
+- Added `/role` argument autocomplete for role names, role subcommands, and `/role remember` scope flags.
+- Added bundled `/role` support for switching role-specific prompt context, editable `/role remember` memory extraction, and saving global/project role memory.
 
 ### Fixed
 
