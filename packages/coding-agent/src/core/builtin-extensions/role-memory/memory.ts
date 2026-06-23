@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { type Api, complete, type Model } from "@earendil-works/pi-ai";
+import { type Api, complete, type Model } from "@earendil-works/pi-ai/compat";
 import type { ModelRegistry } from "../../model-registry.ts";
 import { writeMemoryAtomic } from "./storage.ts";
 import type { MemoryExtractionResult, RoleBundle, RolePaths } from "./types.ts";
