@@ -510,11 +510,10 @@ export class AuthStorage {
 			}
 		}
 
-		if (options.includeFallback === false) return undefined;
-
-		// Fall back to environment variable
-		const envKey = getEnvApiKey(providerId);
-		if (envKey) return envKey;
+		if (options.includeFallback !== false) {
+			const envKey = getEnvApiKey(providerId);
+			if (envKey) return envKey;
+		}
 
 		return undefined;
 	}
