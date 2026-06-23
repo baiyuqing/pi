@@ -5,7 +5,7 @@ import { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
 
 const context: Context = { messages: [{ role: "user", content: "hi", timestamp: Date.now() }] };
 
-const model: Model<"openai-responses"> = {
+const legacyModel: Model<"openai-responses"> = {
 	id: "test-model",
 	name: "Test Model",
 	api: "openai-responses",
@@ -18,13 +18,18 @@ const model: Model<"openai-responses"> = {
 	maxTokens: 4096,
 };
 
-function message(): AssistantMessage {
+const openaiModel: Model<"openai-responses"> = {
+	...legacyModel,
+	provider: "openai",
+};
+
+function message(sourceModel: Model<"openai-responses">): AssistantMessage {
 	return {
 		role: "assistant",
 		content: [{ type: "text", text: "ok" }],
-		api: model.api,
-		provider: model.provider,
-		model: model.id,
+		api: sourceModel.api,
+		provider: sourceModel.provider,
+		model: sourceModel.id,
 		usage: {
 			input: 0,
 			output: 0,
@@ -38,7 +43,7 @@ function message(): AssistantMessage {
 	};
 }
 
-describe("compat legacy API fallback", () => {
+describe("compat API key injection", () => {
 	afterEach(() => {
 		resetApiProviders();
 	});
@@ -50,7 +55,7 @@ describe("compat legacy API fallback", () => {
 			stream: (_model, _context, options) => {
 				capturedApiKey = options?.apiKey;
 				const stream = new AssistantMessageEventStream();
-				const output = message();
+				const output = message(legacyModel);
 				stream.push({ type: "start", partial: output });
 				stream.push({ type: "done", reason: "stop", message: output });
 				stream.end(output);
@@ -59,7 +64,7 @@ describe("compat legacy API fallback", () => {
 			streamSimple: (_model, _context, options) => {
 				capturedApiKey = options?.apiKey;
 				const stream = new AssistantMessageEventStream();
-				const output = message();
+				const output = message(legacyModel);
 				stream.push({ type: "start", partial: output });
 				stream.push({ type: "done", reason: "stop", message: output });
 				stream.end(output);
@@ -67,8 +72,37 @@ describe("compat legacy API fallback", () => {
 			},
 		});
 
-		await complete(model, context, { apiKey: "request-key" });
+		await complete(legacyModel, context, { apiKey: "request-key" });
 
 		expect(capturedApiKey).toBe("request-key");
+	});
+
+	it("uses request-scoped env when injecting provider API keys", async () => {
+		let capturedApiKey: string | undefined;
+		registerApiProvider({
+			api: "openai-responses",
+			stream: (_model, _context, options) => {
+				capturedApiKey = options?.apiKey;
+				const stream = new AssistantMessageEventStream();
+				const output = message(openaiModel);
+				stream.push({ type: "start", partial: output });
+				stream.push({ type: "done", reason: "stop", message: output });
+				stream.end(output);
+				return stream;
+			},
+			streamSimple: (_model, _context, options) => {
+				capturedApiKey = options?.apiKey;
+				const stream = new AssistantMessageEventStream();
+				const output = message(openaiModel);
+				stream.push({ type: "start", partial: output });
+				stream.push({ type: "done", reason: "stop", message: output });
+				stream.end(output);
+				return stream;
+			},
+		});
+
+		await complete(openaiModel, context, { env: { OPENAI_API_KEY: "scoped-key" } });
+
+		expect(capturedApiKey).toBe("scoped-key");
 	});
 });
